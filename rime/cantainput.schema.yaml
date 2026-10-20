@@ -1,0 +1,127 @@
+# Rime schema
+# encoding: utf-8
+#
+# 粵拼 Cantainput — 用 Squirrel 做宿主，跑 canta-input 自己編出來嘅詞庫。
+#
+# 為甚麼有這個：macOS 26 唔接受新登記嘅 ad-hoc 簽名輸入法（見 docs/spec.md
+# §註冊），所以我們嘅 Swift 引擎暫時入唔到系統。這份 schema 把同一個詞庫、
+# 同一組頻率權重搬去一個已經註冊得到嘅宿主入面，令今日有得打。
+#
+# 同 jyut6ping3 嘅分別：
+#   * 詞庫係 cantainput（我們用 rime-cantonese + essay 重新編嘅）
+#   * 冇反向查字（唔要 pinyin/cangjie/stroke 混入候選）
+#   * 開咗三條最常用嘅容錯規則（ng-/Ø-、n→l、gw/kw+o）
+
+---
+schema:
+  schema_id: cantainput
+  name: 粵拼 Cantainput
+  version: "0.1"
+  author:
+    - SHU LAP LAI
+  description: |-
+    粵語拼音（香港語言學學會方案），詞庫由 canta-input 編譯。
+    支援聲調輸入、首字母簡拼、ng-/Ø- 同 n/l 容錯。
+    用 Ctrl+` 或者 F4 切換其他輸入方案。
+
+switches:
+  - name: ascii_mode
+    reset: 0
+    states: [ 粵, 英 ]
+  - name: full_shape
+    states: [ 半角, 全角 ]
+  - options: [ noop, variants_hk, trad_tw, simplification ]
+    states: [ 傳統漢字, 香港傳統漢字, 臺灣傳統漢字, 大陆简化汉字 ]
+    reset: 1
+  - name: ascii_punct
+    states: [ 。，, ．， ]
+
+engine:
+  processors:
+    - ascii_composer
+    - recognizer
+    - key_binder
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor
+  segmentors:
+    - ascii_segmentor
+    - matcher
+    - abc_segmentor
+    - punct_segmentor
+    - fallback_segmentor
+  translators:
+    - punct_translator
+    - script_translator
+  filters:
+    - simplifier
+    - simplifier@variants_hk
+    - simplifier@trad_tw
+    - uniquifier
+
+speller:
+  alphabet: zyxwvutsrqponmlkjihgfedcba
+  delimiter: " '"
+  algebra:
+    # 容錯：疑影交替，ng- 通 Ø-，Ø- 通 ng-
+    - derive/^ng([aeiou])/$1/
+    - derive/^([aeiou])/ng$1/
+
+    # 容錯：泥來合流，n- 併入 l-，例如「你」讀若「理」
+    - derive/^n(?!g)/l/
+
+    # 容錯：圓唇輔音合口韻缺位，gw-/kw- 併入 g-/k-
+    - derive/^(g|k)wo/$1o/
+
+    - derive/^([aeiou])/q$1/      # 增加 q 表示喉塞
+    - derive/^jy?([aeiou])/y$1/   # 容錯 je -> ye, jyu -> yu
+    - derive/^jyu/ju/             # 容錯 jyu -> ju
+    - derive/yu(?!ng|k)/y/        # 容錯 yu -> y
+    - derive/(g|k)u(?!ng|k)/$1wu/ # 輔音圓唇
+    - derive/eoi(?=\d)/eoy/       # 容錯
+    - derive/eo/oe/               # 容錯 eo/oe 不分
+    - derive/oe/eo/               # 容錯 eo/oe 不分
+    - derive/aa(?=\d)/a/          # 容錯
+    - derive/\d//                 # 忽略聲調
+
+    - abbrev/^([a-z]).+$/$1/      # 首字母簡拼
+
+    - xform/1/v/                  # 陰平
+    - xform/4/vv/                 # 陽平
+    - xform/2/x/                  # 陰上
+    - xform/5/xx/                 # 陽上
+    - xform/3/q/                  # 陰去
+    - xform/6/qq/                 # 陽去
+
+translator:
+  dictionary: cantainput
+  spelling_hints: 8
+  preedit_format:
+    - xform/([aeiouymngptk])vv/${1}4/
+    - xform/([aeiouymngptk])xx/${1}5/
+    - xform/([aeiouymngptk])qq/${1}6/
+    - xform/([aeiouymngptk])v/${1}1/
+    - xform/([aeiouymngptk])x/${1}2/
+    - xform/([aeiouymngptk])q/${1}3/
+
+variants_hk:
+  option_name: variants_hk
+  opencc_config: t2hkf.json
+
+trad_tw:
+  option_name: trad_tw
+  opencc_config: t2tw.json
+
+punctuator:
+  import_preset: symbols_cantonese
+
+key_binder:
+  import_preset: default
+
+recognizer:
+  import_preset: default
+  patterns:
+    punct: "^/([0-9]0?|[a-z]+)$"
+...

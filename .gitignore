@@ -6,3 +6,4 @@ Resources/icon.tiff
 .DS_Store
 .build/
 dist/
+rim/cantainput.dict.yaml

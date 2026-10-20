@@ -3,7 +3,9 @@ import Cocoa
 import InputMethodKit
 import CantainputCore
 
-let kBundleIdentifier = "local.cantainput.inputmethod"
+/// Taken from the bundle so the same binary works whatever identifier the
+/// Info.plist declares (the ad-hoc registration experiments rely on that).
+let kBundleIdentifier = Bundle.main.bundleIdentifier ?? "local.cantainput.inputmethod"
 /// IMK derives the NSConnection name as "<bundle identifier>_Connection", so the
 /// value must match `InputMethodConnectionName` in Info.plist exactly. A custom
 /// name here makes the server register a connection nobody looks up.
@@ -28,6 +30,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSLog("[Cantainput] %d of %d input sources are ours",
               listed.count, mine?.count ?? 0)
+        // Registration only says "request accepted"; a freshly registered source
+        // stays disabled until someone turns it on. Try to do that ourselves.
+        for source in listed {
+            let enabled = TISEnableInputSource(source)
+            NSLog("[Cantainput] TISEnableInputSource %d", enabled)
+        }
         server = IMKServer(name: kConnectionName, bundleIdentifier: kBundleIdentifier)
         NSLog("[Cantainput] IMKServer %@ (%@)", server == nil ? "FAILED" : "started", kConnectionName)
     }
