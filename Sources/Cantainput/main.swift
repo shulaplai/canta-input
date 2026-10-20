@@ -18,6 +18,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // but silently ignored.
         let status = TISRegisterInputSource(Bundle.main.bundleURL as CFURL)
         NSLog("[Cantainput] TISRegisterInputSource %d", status)
+        // Say out loud whether the system really knows us. A noErr return only
+        // means "request accepted"; the source list is the truth.
+        let mine = TISCreateInputSourceList(nil, true).takeRetainedValue() as? [TISInputSource]
+        let listed = (mine ?? []).filter { source in
+            guard let raw = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else { return false }
+            let id = Unmanaged<CFString>.fromOpaque(raw).takeUnretainedValue() as String
+            return id.hasPrefix(kBundleIdentifier)
+        }
+        NSLog("[Cantainput] %d of %d input sources are ours",
+              listed.count, mine?.count ?? 0)
         server = IMKServer(name: kConnectionName, bundleIdentifier: kBundleIdentifier)
         NSLog("[Cantainput] IMKServer %@ (%@)", server == nil ? "FAILED" : "started", kConnectionName)
     }
