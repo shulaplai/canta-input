@@ -7,7 +7,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP="$ROOT/build/Cantainput.app"
+APP="$ROOT/build/app/Cantainput.app"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
     "$ROOT/Sources/Cantainput/Info.plist")
 IDENTIFIER="local.cantainput.inputmethod"
@@ -18,7 +18,7 @@ PKG="$DIST/Cantainput-$VERSION.pkg"
 
 "$ROOT/tools/build.sh" >/dev/null
 
-rm -rf "$STAGE" "$SCRIPTS"
+rm -rf "$STAGE" "$SCRIPTS" "$DIST/component.plist"
 mkdir -p "$STAGE/Library/Input Methods" "$SCRIPTS"
 ditto "$APP" "$STAGE/Library/Input Methods/Cantainput.app"
 
@@ -43,16 +43,22 @@ exit 0
 POSTINSTALL
 chmod +x "$SCRIPTS/postinstall"
 
+# Without this, Installer sees the same CFBundleIdentifier already registered
+# from a local build and *relocates* the payload over it instead of installing
+# into /Library/Input Methods.
+cp "$ROOT/tools/component.plist" "$DIST/component.plist"
+
 rm -f "$PKG"
 pkgbuild \
     --root "$STAGE" \
+    --component-plist "$DIST/component.plist" \
     --scripts "$SCRIPTS" \
     --identifier "$IDENTIFIER.pkg" \
     --version "$VERSION" \
     --install-location / \
     "$PKG" >/dev/null
 
-rm -rf "$STAGE" "$SCRIPTS"
+rm -rf "$STAGE" "$SCRIPTS" "$DIST/component.plist"
 echo "built $PKG"
 echo "install: double-click it, or  sudo installer -pkg \"$PKG\" -target /"
 echo "then log out and back in, and add '粵拼 Cantainput' under Input Sources"

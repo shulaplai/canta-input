@@ -14,7 +14,7 @@ fi
 swift build -c release
 BIN="$(swift build -c release --show-bin-path)/Cantainput"
 
-APP="$ROOT/build/Cantainput.app"
+APP="$ROOT/build/app/Cantainput.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Cantainput"
