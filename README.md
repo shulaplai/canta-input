@@ -14,6 +14,8 @@ Mac 粵語拼音（粵拼／Jyutping）輸入法。自己寫嘅 Swift ranking en
 - [ ] 未做：打錯字容錯（edit distance）、bigram 詞頻
 - [ ] 未試：真正喺 app 入面打字（等上面嗰步）
 
+![候選窗](docs/candidates.png)
+
 ## 安裝
 
 ```bash
