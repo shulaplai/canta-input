@@ -1,0 +1,7 @@
+build/
+Data/
+Resources/jyutping.tsv
+Resources/icon.tiff
+.swiftpm/
+.DS_Store
+.build/
