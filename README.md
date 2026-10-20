@@ -18,7 +18,23 @@ Mac 粵語拼音（粵拼／Jyutping）輸入法。自己寫嘅 Swift ranking en
 
 ![候選窗](docs/candidates.png)
 
-## 安裝
+## 安裝（.pkg，最快）
+
+```bash
+tools/package.sh                  # 出 dist/Cantainput-0.1.0.pkg
+```
+
+雙擊個 pkg（或者 `sudo installer -pkg dist/Cantainput-0.1.0.pkg -target /`），
+裝去 `/Library/Input Methods`，同 Squirrel 同一個位置。裝完登出再登入，
+去 系統設定 → 鍵盤 → 文字輸入 → 輸入方式 → `+` → 中文（繁體）→「粵拼 Cantainput」。
+
+用家**唔需要** Xcode 或者 Swift，pkg 入面已經係 build 好嘅 app。
+
+> 未經 Apple 公證嘅 pkg，第一次開會被 Gatekeeper 擋。到 系統設定 → 隱私與安全性 →
+> 撳「仍要打開」就得。要完全免呢一步，要有 Apple Developer Program（US$99/年）嘅
+> Developer ID Installer 證書 + `notarytool` 公證 + `stapler` 釘票。
+
+## 安裝（由 source build）
 
 ```bash
 tools/fetch_data.sh          # 下載上游詞庫（唔會 commit）
@@ -75,6 +91,6 @@ tools/fetch_corpus.sh && python3 tools/build_lm.py     # 約 1.5 分鐘
 ```
 Sources/CantainputCore/   Lexicon（詞庫）、Decoder（Viterbi）、LanguageModel（bigram）、Engine（排序）、Learning（學習）
 Sources/Cantainput/       IMK host、候選窗、Info.plist
-tools/                    fetch_data.sh / build_lexicon.py / fetch_corpus.sh / build_lm.py / build.sh / install.sh / verify.sh
+tools/                    package.sh（出 .pkg） / fetch_data.sh / build_lexicon.py / fetch_corpus.sh / build_lm.py / build.sh / install.sh / verify.sh
 docs/spec.md              設計、排序公式、已知限制、路線圖
 ```

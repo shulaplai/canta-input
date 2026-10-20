@@ -1,14 +1,23 @@
+import Carbon
 import Cocoa
 import InputMethodKit
 import CantainputCore
 
-let kConnectionName = "Cantainput_1_Connection"
 let kBundleIdentifier = "local.cantainput.inputmethod"
+/// IMK derives the NSConnection name as "<bundle identifier>_Connection", so the
+/// value must match `InputMethodConnectionName` in Info.plist exactly. A custom
+/// name here makes the server register a connection nobody looks up.
+let kConnectionName = kBundleIdentifier + "_Connection"
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var server: IMKServer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Ask the system to add this bundle to the input source list. Called
+        // from inside the app: the same call from an outside tool is accepted
+        // but silently ignored.
+        let status = TISRegisterInputSource(Bundle.main.bundleURL as CFURL)
+        NSLog("[Cantainput] TISRegisterInputSource %d", status)
         server = IMKServer(name: kConnectionName, bundleIdentifier: kBundleIdentifier)
         NSLog("[Cantainput] IMKServer %@ (%@)", server == nil ? "FAILED" : "started", kConnectionName)
     }

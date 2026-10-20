@@ -31,7 +31,7 @@
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>InputMethodConnectionName</key>
-    <string>Cantainput_1_Connection</string>
+    <string>local.cantainput.inputmethod_Connection</string>
     <key>InputMethodServerControllerClass</key>
     <string>Cantainput.CantoneseInputController</string>
     <key>InputMethodServerDelegateClass</key>

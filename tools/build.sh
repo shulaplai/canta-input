@@ -19,6 +19,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Cantainput"
 cp "$ROOT/Sources/Cantainput/Info.plist" "$APP/Contents/Info.plist"
+printf 'APPL????' > "$APP/Contents/PkgInfo"
 cp "$ROOT/Resources/jyutping.tsv" "$APP/Contents/Resources/jyutping.tsv"
 cp "$ROOT/Resources/icon.tiff" "$APP/Contents/Resources/icon.tiff"
 if [ -f "$ROOT/Resources/zh_char_bigram.bin" ]; then
