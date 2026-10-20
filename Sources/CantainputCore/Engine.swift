@@ -43,6 +43,9 @@ public final class Engine {
         } catch {
             loadStatus = "load failed: \(error)"
         }
+        if let lmURL = Bundle.main.url(forResource: "zh_char_bigram", withExtension: "bin") {
+            LanguageModel.shared.load(from: lmURL)
+        }
         NSLog("[Cantainput] lexicon %@", loadStatus)
     }
 
@@ -96,8 +99,21 @@ public final class Engine {
         }
 
         // A repaired reading that still scores below zero is noise, not a guess.
-        var out = Engine.diversify(merged.values.filter { $0.score > 0 }
-                                            .sorted { $0.score > $1.score }, limit: limit)
+        var poolOut = merged.values.filter { $0.score > 0 }
+
+        // Rerank with the character bigram model. Word frequency alone cannot
+        // tell 我想食飯 from 我上食飯; the bigram can. Averaged per character so
+        // long and short candidates stay comparable.
+        let lm = LanguageModel.shared
+        if lm.isLoaded {
+            poolOut = poolOut.map { c in
+                Candidate(text: c.text, code: c.code,
+                          score: c.score + Engine.lmWeight * lm.score(c.text),
+                          words: c.words, codes: c.codes, fuzzy: c.fuzzy)
+            }
+        }
+
+        var out = Engine.diversify(poolOut.sorted { $0.score > $1.score }, limit: limit)
         if out.count < limit {
             let seen = Set(out.map { $0.text })
             let filler = rank(input: input, limit: limit * 3).filter { !seen.contains($0.text) }
@@ -106,6 +122,11 @@ public final class Engine {
         if out.isEmpty { return rank(input: input, limit: limit) }
         return out
     }
+
+    /// Log10 probability is worth this much per unit, in the same units as
+    /// `LexEntry.score`. Every candidate for one input covers the same syllables,
+    /// so the sum is length-neutral here even though it is a sum.
+    public static var lmWeight = 600.0
 
     /// Kill near-duplicates: candidates that differ only in their first
     /// character are useless to show eight times.

@@ -55,6 +55,12 @@ func runSelfTest() -> Int32 {
     check("gamjattinhei -> 今日天氣", sentence("gamjattinhei").hasPrefix("今日天氣"), sentence("gamjattinhei"))
     check("neig repairs to 你", sentence("neig") == "你", sentence("neig"))
     check("neix repairs to 你", sentence("neix") == "你", sentence("neix"))
+    check("lm loaded", LanguageModel.shared.isLoaded,
+          "\(LanguageModel.shared.bigramCount) bigrams")
+    check("lm reranks 我想食飯", sentence("ngosoengsikfaan") == "我想食飯",
+          sentence("ngosoengsikfaan"))
+    check("lm keeps 今日天氣", sentence("gamjattinhei") == "今日天氣",
+          sentence("gamjattinhei"))
     check("candidate list fills", Engine.shared.candidates(for: "nei", limit: 18).count == 18,
           "\(Engine.shared.candidates(for: "nei", limit: 18).count)")
     let decoded = Engine.shared.candidates(for: "neihoumaa", limit: 18)
@@ -90,6 +96,12 @@ if let renderIndex = CommandLine.arguments.firstIndex(of: "--render-panel") {
     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out))
     print("wrote \(out) \(Int(size.width))x\(Int(size.height)) items=\(items.count)")
     exit(0)
+}
+
+if let weightIndex = CommandLine.arguments.firstIndex(of: "--lm-weight"),
+   weightIndex + 1 < CommandLine.arguments.count,
+   let w = Double(CommandLine.arguments[weightIndex + 1]) {
+    Engine.lmWeight = w
 }
 
 if let probeIndex = CommandLine.arguments.firstIndex(of: "--probe") {

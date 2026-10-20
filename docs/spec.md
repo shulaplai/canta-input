@@ -156,6 +156,37 @@ pathScore = Σ wordScore
 - 候選下面顯示嘅粵拼來自詞條本身（`Lexicon.splitToned`，保留聲調），
   所以會見到 `nei5 hou2 maa1`。單字第一個讀音 build 時 +5 分（`好` → `hou2` 唔係
   `hou3`），但 rime 個 `%` 欄唔可靠，間中仍會揀錯調（例：`嗎` 出 `maa1` 唔係 `maa3`）。
+### 語言模型（字 bigram，v1.2）
+
+詞頻係 unigram，分唔清「我上食飯」同「我想食飯」。所以加一層字 bigram rescoring：
+
+```
+Resources/zh_char_bigram.bin   5.2MB
+  CALM v1 | 13,000 字 | 856,180 條 bigram | log10 P(b|a) 量化成 Int16 千分位
+
+score += 600 × Σ log10 P(c_i | c_{i-1})
+```
+
+- 語料：粵文維基百科 dump（`tools/fetch_corpus.sh` 下載 129MB bz2），
+  `tools/build_lm.py` 剝 wiki markup、只留漢字、以非漢字斷句，數 36.1M 字。
+- **每個候選都覆蓋同一批音節**，所以字數一樣，sum 同 average 排名等價 —— 用 sum。
+- 語料未見過嘅字／pair 罰 −3.0（**唔係 0**）。原本漏咗呢個，結果罕見字（`兲`）
+  因為「冇紀錄 = 冇罰分」而排第一。
+- 權重 `Engine.lmWeight = 600` 可以喺 command line 調（`--lm-weight`）。
+  實測掃 600→8000：**600 最好（12/13）**，越高越差（`尼號碼`、`今日兲起` 返嚟）。
+
+實測 13 條句子（`nei/你`、`ngodei/我哋`、`zousan/早晨`、`gamjattinhei/今日天氣`…）：
+
+| | 加 LM 前 | 加 LM 後 |
+|---|---|---|
+| `ngosoengsikfaan` | 我上食飯 | **我想食飯** ✅ |
+| `gamjattinhei` | 今日兲起 | **今日天氣** ✅ |
+| `neihoumaa` | 你號碼（你好嗎第 3） | 你號碼（你好嗎仍然落後）❌ |
+
+`你好嗎` 輸蝕係因為 `號碼` 嘅 unigram 分數高過 `你好`+`嗎` 1418 分，而 LM 只補得返 168 分
+（`你好` −1.77 vs `你號` unseen −3.0；`好嗎` −3.26 vs `號碼` −2.31）。
+要贏就要 LM 權重 >5000，但咁會令其他句子變差 → 呢個要靠 trigram 或者詞級 LM，唔係調參數。
+
 - **取捨**：`wordBonus` 大 → 長詞贏（`多謝`／`早晨`／`今日天氣` 正確），
   但成本相近時 unigram 仍然會揀錯（`ngosoengsikfaan` → `我上食飯` 先過 `我想食飯`，
   正解排第 2）。真正解決要 bigram / 粵語詞頻，唔係調參數。
@@ -210,6 +241,7 @@ Audio → VAD → ASRBackend ─┬─ LocalBackend(sherpa-onnx, model path)
 
 - 冇簡拼、冇模糊音、冇 bigram（只有 unigram + 人手 prior），所以長句仍會揀錯詞。
 - 容錯只在精確解碼唔夠位時觸發；打錯但仍成合法音節（`ngodeu`）唔會估。
+- 字 bigram 補唔到 `你好嗎`（詳見 §7），要 trigram 或詞級 LM 才搞得掂。
 - 候選 18 個、2 行（1–9，Shift+1–9）；未做翻頁。
 - 打唔到嘅字未接聲音輸出（v2 嘅介面已預留）。
 - 未做 `IsSecureEventInputEnabled()` 直通（password field 會照樣被攔）。
@@ -233,6 +265,7 @@ Audio → VAD → ASRBackend ─┬─ LocalBackend(sherpa-onnx, model path)
 | rime-cantonese 詞庫 | CC BY 4.0 | 用，標 attribution |
 | rime-essay 頻率 | LGPL-3.0 | 用嚟計分，標出處（分數已係聚合數字） |
 | maps 表（地名） | ODbL-1.0 | 用，標 attribution |
+| 粵文維基百科（語言模型語料） | CC BY-SA 4.0 + GFDL | 用，標 attribution；只發布 bigram 統計，唔發布原文 |
 
 若日後想轉做寬鬆授權嘅 repo，只需換一個頻率來源重新 build（`build_lexicon.py` 已將來源隔離）。
 
@@ -240,8 +273,9 @@ Audio → VAD → ASRBackend ─┬─ LocalBackend(sherpa-onnx, model path)
 
 - **v1.0**（已做完）：註冊、打得順
 - **v1.1**（已做完）：**Viterbi 整句解碼、18 個候選 2 行、粵拼標音、粵字 prior**
-- **v1.2**（進行中）：edit-distance 容錯 ✅、粵語語料 → trigram rescoring ⬜
-- **v1.3**：簡拼、繁簡一鍵切換、`SecureEventInput` 直通、翻頁、符號面板
+- **v1.2**（已做完）：edit-distance 容錯 ✅、粵語語料 ✅、字 bigram rescoring ✅
+- **v1.3**：字 trigram（救 `你好嗎`）、「估嘅 6 個」候選、簡拼、繁簡一鍵切換、
+  `SecureEventInput` 直通、翻頁、符號面板
 - **v1.4**：按 app 記憶、拼音提示浮窗（睇返已經上屏嘅字點讀）
 - **v2.0**：Mac 語音聽寫（本地 sherpa-onnx + 可切雲端）
 - **v2.5**：Android 鍵盤（粵拼＋英文＋手寫）

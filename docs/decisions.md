@@ -131,13 +131,17 @@ v1 = Mac 粵拼輸入法；v2 = 語音聽寫（Typeless 式，斷句要靚）；
 呢啲係上下文機率問題，調參數解決唔到。所以：
 
 1. **先建粵語語料**（無論行邊條路都要）
-2. **字級 trigram rescoring**（KenLM 式）：10–20MB、<1ms、純 Swift 查表
+2. **字級 n-gram rescoring**：已做 **bigram**（5.2MB、856k 條、純 Swift 二分查表），
+   trigram 留待 v1.3
 3. 如果 trigram 到頂，**最後才**上 4.5MB 字級 Transformer rescorer
 
 **理由**：兩條路同一個前置條件（粵語語料）。trigram 便宜十倍、無新依賴、即刻見效。
 neural 要 GPU 訓練 + 幾千行 Swift 移植（要對齊 erf-GELU、LayerNorm eps、int8 量化尺度）。
 
-**代價**：trigram 到頂之後仍要再做一次 neural 工程。
+**代價**：n-gram 到頂之後仍要再做一次 neural 工程。
+
+**實作備註**（踩過嘅坑）：語料未見過嘅字要罰分（−3.0）而唔係 0，否則罕見字（`兲`）
+因為「冇紀錄」而排第一。權重掃過 600–8000，600 最好。
 
 ---
 
