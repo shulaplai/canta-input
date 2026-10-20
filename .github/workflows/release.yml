@@ -1,0 +1,54 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch upstream dictionaries
+        run: |
+          tools/fetch_data.sh
+          python3 tools/build_lexicon.py
+
+      - name: Build
+        run: tools/build.sh
+
+      - name: Self-test
+        run: '"build/Cantainput.app/Contents/MacOS/Cantainput" --selftest'
+
+      - name: Package
+        run: tools/package.sh
+
+      - name: Upload artifact
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cantainput-pkg
+          path: dist/*.pkg
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.pkg
+          body: |
+            Mac 粵拼輸入法（粵拼 Cantainput）${{ github.ref_name }}。
+
+            **安裝**：下載下面的 `.pkg`，雙擊執行。
+
+            因為個 pkg 未經 Apple 公證，第一次開會被 Gatekeeper 擋：
+            去 系統設定 → 隱私與安全性 → 撳「仍要打開」，再裝一次。
+
+            裝完**登出再登入**，然後 系統設定 → 鍵盤 → 文字輸入 → 輸入方式 →
+            `+` → 中文（繁體）→「粵拼 Cantainput」。
+
+            想自己 build：見 [README](https://github.com/${{ github.repository }}#readme)。

@@ -5,3 +5,4 @@ Resources/icon.tiff
 .swiftpm/
 .DS_Store
 .build/
+dist/
