@@ -91,26 +91,24 @@ public final class LanguageModel {
         return nil
     }
 
-    /// Sum of log10 P(c_i | c_{i-1}) over the sentence. Characters outside the
-    /// alphabet break the chain rather than penalising it.
+    /// Sum of log10 P(c_i | c_{i-1}) over adjacent pairs.
+    ///
+    /// A character outside the alphabet is not charged on its own: both pairs it
+    /// touches are charged as unseen, exactly like a known but improbable
+    /// character would be. Charging it once instead made rare glyphs share a
+    /// reading with a common character (傒 for 喺) cheaper than the common one.
     public func score(_ text: String) -> Double {
         guard isLoaded else { return 0 }
+        let chars = Array(text)
+        guard chars.count > 1 else { return 0 }
         var total = 0.0
-        var previous: UInt32?
-        for ch in text {
-            guard let current = id(of: ch) else {
-                // A character the corpus never saw is not free: charge it like an
-                // unseen bigram, otherwise rare glyphs outrank common ones.
+        var previous = id(of: chars[0])
+        for i in 1..<chars.count {
+            let current = id(of: chars[i])
+            if let a = previous, let b = current, let q = lookup(a, b) {
+                total += Double(q) / 1000.0
+            } else {
                 total += LanguageModel.unseen
-                previous = nil
-                continue
-            }
-            if let prev = previous {
-                if let q = lookup(prev, current) {
-                    total += Double(q) / 1000.0
-                } else {
-                    total += LanguageModel.unseen
-                }
             }
             previous = current
         }

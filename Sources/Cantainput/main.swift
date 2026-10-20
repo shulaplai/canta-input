@@ -61,6 +61,8 @@ func runSelfTest() -> Int32 {
           sentence("ngosoengsikfaan"))
     check("lm keeps 今日天氣", sentence("gamjattinhei") == "今日天氣",
           sentence("gamjattinhei"))
+    check("lm keeps 我喺屋企", sentence("ngohaiukkei") == "我喺屋企",
+          sentence("ngohaiukkei"))
     check("candidate list fills", Engine.shared.candidates(for: "nei", limit: 18).count == 18,
           "\(Engine.shared.candidates(for: "nei", limit: 18).count)")
     let decoded = Engine.shared.candidates(for: "neihoumaa", limit: 18)
