@@ -142,6 +142,17 @@ pathScore = Σ wordScore
   每個 tail 最多留 2 個，免得 18 個位都係同一句嘅同音變體。
 - 唔夠 18 個就用詞級前綴查詢（`rank`）補位，所以 short input 一定夠位。
 - 有聲調數字（`ngo4`）跳過 Viterbi，用前綴 + `toned.hasPrefix` 過濾。
+- **打錯字**分三級補救（`Engine.candidates`）：
+  1. 完整輸入精確解碼（正常路徑）
+  2. 完整輸入解唔夠 18 個 → 試 `dropLast(1...3)` 嘅前綴（每個丟咗嘅字母罰 −1000）。
+     打錯通常喺最後一兩個字母，所以 `neig` → 用 `nei` 解出「你」。
+  3. 仲係唔夠 → 開容錯格：每個可達位置只留**最少編輯距離**嘅 2 個音節
+     （同長度=替換優先過 ±1=增刪），每個修補罰 −4000，最多修補 2 個音節。
+  4. 分數 ≤ 0 嘅候選直接丟（`zzzzzz` 唔會出垃圾）。
+- 容錯格成本：每位置掃 831 個音節 × 3 個長度，但每位置最多留 2 條邊，
+  加全域 60k node 上限。實測 `zzzzzz` 9.4ms（未限邊時 230ms）。
+- **未做**：打錯之後仍然砌得出合法音節嘅情況（`ngodeu` 想打 `ngodei`）唔會觸發容錯，
+  因為精確路徑已經夠 18 個。要真正解決要喺正常路徑都混入估嘅候選（使用者要嘅 6 個）。
 - 候選下面顯示嘅粵拼來自詞條本身（`Lexicon.splitToned`，保留聲調），
   所以會見到 `nei5 hou2 maa1`。單字第一個讀音 build 時 +5 分（`好` → `hou2` 唔係
   `hou3`），但 rime 個 `%` 欄唔可靠，間中仍會揀錯調（例：`嗎` 出 `maa1` 唔係 `maa3`）。
@@ -198,7 +209,7 @@ Audio → VAD → ASRBackend ─┬─ LocalBackend(sherpa-onnx, model path)
 ## 9. 已知限制（v1）
 
 - 冇簡拼、冇模糊音、冇 bigram（只有 unigram + 人手 prior），所以長句仍會揀錯詞。
-- 冇 edit-distance 容錯：打錯字母（`neig` 想打 `nei`）唔會估，只會冇候選。
+- 容錯只在精確解碼唔夠位時觸發；打錯但仍成合法音節（`ngodeu`）唔會估。
 - 候選 18 個、2 行（1–9，Shift+1–9）；未做翻頁。
 - 打唔到嘅字未接聲音輸出（v2 嘅介面已預留）。
 - 未做 `IsSecureEventInputEnabled()` 直通（password field 會照樣被攔）。
@@ -229,7 +240,7 @@ Audio → VAD → ASRBackend ─┬─ LocalBackend(sherpa-onnx, model path)
 
 - **v1.0**（已做完）：註冊、打得順
 - **v1.1**（已做完）：**Viterbi 整句解碼、18 個候選 2 行、粵拼標音、粵字 prior**
-- **v1.2**（下一步）：edit-distance 容錯（打錯字都估到）、bigram 詞頻
+- **v1.2**（進行中）：edit-distance 容錯 ✅、粵語語料 → trigram rescoring ⬜
 - **v1.3**：簡拼、繁簡一鍵切換、`SecureEventInput` 直通、翻頁、符號面板
 - **v1.4**：按 app 記憶、拼音提示浮窗（睇返已經上屏嘅字點讀）
 - **v2.0**：Mac 語音聽寫（本地 sherpa-onnx + 可切雲端）

@@ -8,12 +8,15 @@ public struct Candidate {
     public let words: [String]
     /// Toned jyutping of each word, same order.
     public let codes: [String]
+    /// True when the decoder had to correct a mistyped syllable to produce this.
+    public let fuzzy: Bool
 
     public init(text: String, code: String, score: Double,
-                words: [String] = [], codes: [String] = []) {
+                words: [String] = [], codes: [String] = [], fuzzy: Bool = false) {
         self.text = text
         self.code = code
         self.score = score
+        self.fuzzy = fuzzy
         self.words = words.isEmpty ? [text] : words
         self.codes = codes.isEmpty ? [code] : codes
     }
@@ -61,7 +64,40 @@ public final class Engine {
             return rank(input: input, limit: limit)
         }
 
-        var out = Engine.diversify(Decoder.nbest(input, limit: max(limit * 40, 200)), limit: limit)
+        let pool = max(limit * 18, 120)
+        var merged: [String: Candidate] = [:]
+        func add(_ list: [Candidate], penalty: Double) {
+            for c in list {
+                let score = c.score + penalty
+                if let prev = merged[c.text], prev.score >= score { continue }
+                merged[c.text] = Candidate(text: c.text, code: c.code, score: score,
+                                           words: c.words, codes: c.codes, fuzzy: c.fuzzy)
+            }
+        }
+
+        // 1. Exact decoding. This is the normal path.
+        add(Decoder.nbest(input, limit: pool), penalty: 0)
+
+        // 2. The typo is usually in the syllable being typed, so a truncated
+        //    prefix often decodes cleanly while the full string does not.
+        if merged.count < limit {
+            var dropped = 1
+            while dropped <= 3 && input.count - dropped >= 2 {
+                let prefix = String(input.dropLast(dropped))
+                add(Decoder.nbest(prefix, limit: pool), penalty: -1000 * Double(dropped))
+                dropped += 1
+            }
+        }
+
+        // 3. Last resort: repair one syllable at a time. Kept behind the first
+        //    two stages because it costs milliseconds rather than microseconds.
+        if merged.count < limit {
+            add(Decoder.nbest(input, limit: pool, fuzzy: true), penalty: 0)
+        }
+
+        // A repaired reading that still scores below zero is noise, not a guess.
+        var out = Engine.diversify(merged.values.filter { $0.score > 0 }
+                                            .sorted { $0.score > $1.score }, limit: limit)
         if out.count < limit {
             let seen = Set(out.map { $0.text })
             let filler = rank(input: input, limit: limit * 3).filter { !seen.contains($0.text) }

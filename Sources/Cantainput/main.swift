@@ -53,6 +53,8 @@ func runSelfTest() -> Int32 {
     check("mgoijyutjyu -> 唔該粵語", sentence("mgoijyutjyu") == "唔該粵語", sentence("mgoijyutjyu"))
     check("zousan -> 早晨", sentence("zousan") == "早晨", sentence("zousan"))
     check("gamjattinhei -> 今日天氣", sentence("gamjattinhei").hasPrefix("今日天氣"), sentence("gamjattinhei"))
+    check("neig repairs to 你", sentence("neig") == "你", sentence("neig"))
+    check("neix repairs to 你", sentence("neix") == "你", sentence("neix"))
     check("candidate list fills", Engine.shared.candidates(for: "nei", limit: 18).count == 18,
           "\(Engine.shared.candidates(for: "nei", limit: 18).count)")
     let decoded = Engine.shared.candidates(for: "neihoumaa", limit: 18)
@@ -92,7 +94,18 @@ if let renderIndex = CommandLine.arguments.firstIndex(of: "--render-panel") {
 
 if let probeIndex = CommandLine.arguments.firstIndex(of: "--probe") {
     Engine.shared.ensureLoaded()
-    for q in CommandLine.arguments[(probeIndex + 1)...] {
+    let args = Array(CommandLine.arguments[(probeIndex + 1)...])
+    if let first = args.first {
+        var total = 0.0
+        for _ in 0..<20 {
+            let t0 = DispatchTime.now().uptimeNanoseconds
+            _ = Engine.shared.candidates(for: first, limit: 18)
+            total += Double(DispatchTime.now().uptimeNanoseconds - t0) / 1_000_000
+        }
+        print(String(format: "  %.2f ms/query (worst case: %@)", total / 20.0, first))
+        fflush(stdout)
+    }
+    for q in args {
         print("== \(q)"); fflush(stdout)
         for c in Engine.shared.candidates(for: q, limit: 9) {
             print("  \(c.text)   [\(c.code)]  \(Int(c.score))"); fflush(stdout)

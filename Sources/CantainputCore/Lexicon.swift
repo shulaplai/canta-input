@@ -30,6 +30,8 @@ public final class Lexicon {
     public private(set) var maxSyllableLength = 1
     /// Most syllables in one lexicon entry.
     public private(set) var maxSyllables = 1
+    /// Syllables grouped by letter length, used by the fuzzy decoder.
+    public private(set) var syllablesByLength: [Int: [String]] = [:]
 
     public func load(from url: URL) throws {
         guard !loaded else { return }
@@ -76,6 +78,10 @@ public final class Lexicon {
         syllables = syl
         maxSyllableLength = longest
         maxSyllables = most
+
+        var byLength: [Int: [String]] = [:]
+        for s in syl { byLength[s.count, default: []].append(s) }
+        syllablesByLength = byLength
     }
 
     /// Characters that are essentially Cantonese-only. A word containing one is

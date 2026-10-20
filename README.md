@@ -11,7 +11,8 @@ Mac 粵語拼音（粵拼／Jyutping）輸入法。自己寫嘅 Swift ranking en
 - [x] IMK host：inline marked text、自製候選窗（唔用 IMKCandidates）
 - [x] 學習紀錄：`~/Library/Application Support/Cantainput/learning.json`
 - [ ] 首次註冊：macOS 要 **logout / login 一次** 之後，新 IME 才會出現在 Input Sources
-- [ ] 未做：打錯字容錯（edit distance）、bigram 詞頻
+- [x] 打錯字容錯（三級補救，見 `docs/spec.md` §7）
+- [ ] 未做：粵語語料 → trigram 語言模型
 - [ ] 未試：真正喺 app 入面打字（等上面嗰步）
 
 ![候選窗](docs/candidates.png)
@@ -41,6 +42,7 @@ tools/build.sh && tools/install.sh && open "$HOME/Library/Input Methods/Cantainp
 - 聲調可加可唔加：`ngo4` 只出四聲
 - 候選 18 個、分兩行；大字上面，**下面係嗰個候選嘅粵拼讀音**
 - `1`–`9` 揀第一行，`Shift`+`1`–`9` 揀第二行，`←`/`→`/`↑`/`↓` 揀，`esc` 取消
+- 打錯字都估到：`neig`（多打一個字母）→ 你；太亂嘅輸入（`zzzzzz`）寧願乜都唔出
 - 打過嘅字詞會慢慢排前（per-user，唔會離開你部機）
 
 ## 自我測試
