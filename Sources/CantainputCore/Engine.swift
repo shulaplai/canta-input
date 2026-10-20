@@ -132,13 +132,20 @@ public final class Engine {
     /// character are useless to show eight times.
     static func diversify(_ items: [Candidate], limit: Int) -> [Candidate] {
         var tails: [String: Int] = [:]
+        var heads: [String: Int] = [:]
         var out: [Candidate] = []
         for c in items {
             if c.text.count >= 2 {
                 let tail = String(c.text.dropFirst())
                 let seen = tails[tail, default: 0]
                 if seen >= 2 { continue }
+                // Also cap candidates that agree on everything but the last
+                // character, otherwise 你食咗飯未/咪/沒/美 fill the whole strip.
+                let head = String(c.text.dropLast())
+                let headSeen = heads[head, default: 0]
+                if headSeen >= 3 { continue }
                 tails[tail] = seen + 1
+                heads[head] = headSeen + 1
             }
             out.append(c)
             if out.count >= limit { break }

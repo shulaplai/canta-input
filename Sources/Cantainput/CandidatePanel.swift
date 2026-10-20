@@ -18,10 +18,29 @@ final class CandidateView: NSView {
     private let numberFont = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .semibold)
 
     private var cells: [NSRect] = []
+    private var codeLabels: [String] = []
+    private var codeSizes: [CGFloat] = []
+    /// A five-syllable reading is 24 characters wide; clamp it so one long
+    /// sentence candidate cannot stretch the whole strip off the screen.
+    private static let maxCodeWidth: CGFloat = 118
     private var measured = NSSize(width: 10, height: 10)
 
     private func widthOf(_ s: String, _ font: NSFont) -> CGFloat {
         (s as NSString).size(withAttributes: [.font: font]).width
+    }
+
+    /// Long readings shrink before they get cut: truncating the tail would hide
+    /// the one syllable that tells two candidates apart.
+    private func codeLayout(_ code: String) -> (String, CGFloat) {
+        for size in [9.0, 8.0, 7.0] as [CGFloat] {
+            let font = NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            if widthOf(code, font) <= CandidateView.maxCodeWidth { return (code, size) }
+        }
+        var s = code
+        while !s.isEmpty && widthOf(s + "\u{2026}", codeFont) > CandidateView.maxCodeWidth {
+            s.removeLast()
+        }
+        return (s + "\u{2026}", 9.0)
     }
 
     private func label(for index: Int) -> String {
@@ -34,11 +53,17 @@ final class CandidateView: NSView {
     func measure() -> NSSize {
         let perRow = CandidateView.perRow
         var widths: [CGFloat] = []
+        codeLabels = []
+        codeSizes = []
         for c in candidates {
             let num = label(for: widths.count)
             let numW = widthOf(num, numberFont)
+            let (code, size) = codeLayout(c.code)
+            let font = NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            codeLabels.append(code)
+            codeSizes.append(size)
             let w = max(widthOf(c.text, textFont),
-                        numW + 5 + widthOf(c.code, codeFont))
+                        numW + 5 + widthOf(code, font))
             widths.append(max(w + CandidateView.innerPad * 2, CandidateView.minCellWidth))
         }
         let rows = max(1, (candidates.count + perRow - 1) / perRow)
@@ -102,9 +127,12 @@ final class CandidateView: NSView {
             (num as NSString).draw(at: NSPoint(x: cell.minX + CandidateView.innerPad,
                                                y: cell.minY + 7),
                                    withAttributes: numAttr)
-            (c.code as NSString).draw(at: NSPoint(x: cell.minX + CandidateView.innerPad + numW + 5,
+            let code = i < codeLabels.count ? codeLabels[i] : c.code
+            let size = i < codeSizes.count ? codeSizes[i] : 9.0
+            let labelFont = NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            (code as NSString).draw(at: NSPoint(x: cell.minX + CandidateView.innerPad + numW + 5,
                                                   y: cell.minY + 7),
-                                      withAttributes: codeAttr)
+                                    withAttributes: [.font: labelFont, .foregroundColor: codeColor])
         }
 
         ctx.restoreGraphicsState()
