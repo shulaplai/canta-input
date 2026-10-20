@@ -3,13 +3,15 @@
 Mac 粵語拼音（粵拼／Jyutping）輸入法。自己寫嘅 Swift ranking engine（唔靠 librime），
 本機學習你常用嘅字詞，目標係「打得快過而家」。
 
-## 狀態（v1 MVP）
+## 狀態（v1.1）
 
 - [x] 詞庫：138,732 條（字／詞／phrase／英文／地名），由 rime-cantonese + rime-essay 編譯
-- [x] 引擎：toneless 前綴查詢、聲調過濾、詞頻排序、個人學習加權
+- [x] 引擎：**Viterbi 整句解碼**（音節格 + beam search）、wordBonus、粵字 prior、個人學習加權
+- [x] 候選窗：18 個、兩行、每個候選下面標粵拼讀音、即時整句預覽
 - [x] IMK host：inline marked text、自製候選窗（唔用 IMKCandidates）
 - [x] 學習紀錄：`~/Library/Application Support/Cantainput/learning.json`
 - [ ] 首次註冊：macOS 要 **logout / login 一次** 之後，新 IME 才會出現在 Input Sources
+- [ ] 未做：打錯字容錯（edit distance）、bigram 詞頻
 - [ ] 未試：真正喺 app 入面打字（等上面嗰步）
 
 ## 安裝
@@ -32,10 +34,12 @@ tools/build.sh && tools/install.sh && open "$HOME/Library/Input Methods/Cantainp
 
 ## 用法
 
-- 打粵拼字母：`nei` → 你 / `ngodei` → 我哋
+- 打粵拼字母：`nei` → 你、`ngodei` → 我哋、`gamjattinheihouhou` → 今日天氣好好
+- 成句一齊打都得：打落去會即時預覽最似嘅整句，`space` / `enter` 一次過上屏
 - 聲調可加可唔加：`ngo4` 只出四聲
-- `1`–`9` 或 `space` 選第一個，`←`/`→` 揀，`esc` 取消，`enter` 上屏
-- 打過嘅字會慢慢排前（per-user，唔會離開你部機）
+- 候選 18 個、分兩行；大字上面，**下面係嗰個候選嘅粵拼讀音**
+- `1`–`9` 揀第一行，`Shift`+`1`–`9` 揀第二行，`←`/`→`/`↑`/`↓` 揀，`esc` 取消
+- 打過嘅字詞會慢慢排前（per-user，唔會離開你部機）
 
 ## 自我測試
 

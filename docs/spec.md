@@ -1,85 +1,237 @@
-# 粵拼 Cantainput — v1 設計
+# 粵拼 Cantainput — 設計與路線
 
-## 目標
+## 1. 目標與已定決策
 
-Mac 上用粵拼打廣東話，候選字詞要跟住自己嘅習慣排。長遠：v2 語音聽寫（純文字），
-v3 手機版（粵拼＋英文＋手寫）。
+方便用廣東話輸入。自己用為主，但會 GitHub open source，睇吓有冇人一齊用。
 
-## 架構
+| # | 題目 | 決定 |
+|---|---|---|
+| 1 | 使用者 | 自己用 + 公開 source；架構要當「會有貢獻者」咁寫 |
+| 2 | 字形 | 預設**香港標準字形**（`Hant-HK`），另有一鍵轉簡體 |
+| 3 | 輸入碼 | 全拼 + 可選聲調 + 詞語首字母簡拼；模糊音預設關 |
+| 4 | 學習／同步 | 學習一定要做；跨機同步暫時唔做（匯出／匯入留位） |
+| 5 | 詞料授權 | 非商用，版權唔設限，所有來源都可以用 |
+| 6 | 現有工具 | 而家用鼠鬚管（Squirrel），嫌唔夠快、唔夠貼合；**標點符號要重新設計** |
+| 7 | 語音 | 先用免費本地模型；日後有 key 就喺設定即時切換雲端 |
+| 8 | 平台 | 電腦 Mac 最優先；手機 Android 先於 iOS |
+| 9 | 節奏 | 先砌框架 → 批准 → 逐塊揼；唔趕 |
+| 10 | Core 語言 | **Swift 先**；Android 開工前才決定抽唔抽 Rust + UniFFI |
+| 11 | 下一個功能 | **詞組動態組合（Viterbi）先**，標點／簡拼排後 |
+| 12 | 手機語音 | 預設**本地**（Paraformer-trilingual），設定可切雲端 |
+
+長期三件嘢：**v1 Mac 打字**、**v2 語音聽寫（純文字）**、**v3 手機（粵拼＋英文＋手寫）**。
+
+## 2. 三層架構
 
 ```
-keydown → CantoneseInputController (IMKInputController)
-        → Engine.candidates()  → Lexicon（二分前綴查詢）+ Learning（個人加權）
-        → client.setMarkedText() + CandidatePanel（自製 NSPanel）
-        → insertText()
+┌─ Host（每平台一個，薄） ─────────────────────────┐
+│  macOS  : IMKInputController (Swift)             │
+│  Android: InputMethodService (Kotlin)            │
+│  iOS    : UIInputViewController + 主 app          │
+└──────────────────┬───────────────────────────────┘
+                   │ 按鍵 / 音訊
+┌─ Core（共用規格，可移植） ───────────────────────┐
+│  Lexicon      粵拼 → 候選（TSV，平台無關）        │
+│  Ranker       分數公式 + 個人學習                 │
+│  Segmenter    簡拼、詞組動態組合（Viterbi）       │
+│  Punctuator   標點對應表                          │
+│  Converter    繁簡／字形轉換                      │
+│  Settings     同一份 schema                       │
+└──────────────────┬───────────────────────────────┘
+                   │ 文字 / 音訊
+┌─ ASR backend（可插拔） ──────────────────────────┐
+│  Local : sherpa-onnx（Paraformer-yue / Qwen3-ASR）│
+│  Cloud : OpenAI / Azure / Google / ElevenLabs     │
+│  Post  : 標點、ITN、粵語語氣詞保留、書面語模式     │
+└─────────────────────────────────────────────────┘
 ```
 
-- **IMK host**（`InputMethodKit`）：zero TCC 權限、真 inline marked text，係 macOS 上唯一正路。
-- **自製引擎**：librime 要 glog / leveldb / yaml-cpp / OpenCC / boost + cmake，呢部機（只有 CLT、
-  冇 rustc/cmake）今晚砌唔起；而且 ranking 完全自控正是個人化所在。日後可以喺
-  `Engine` protocol 後面換 librime，host 唔使改。
-- **候選窗**：唔用 `IMKCandidates`（macOS 26 上 Liquid Glass 會變白字白底）。
-  自己畫 `NSPanel`，位置由 `attributes(forCharacterIndex:lineHeightRectangle:)` 攞插入點。
+**Core 用咩語言寫？** v1 用 Swift（呢部機只有 CLT，冇 rustc／cmake；Swift 即刻開得工）。
+Core 嘅**規格**（TSV 格式、排序公式、標點表、settings schema）寫成平台無關，
+Android 開工時有兩條路：
 
-## 詞庫
+- (a) 照規格用 Kotlin 重寫（快，但兩份邏輯會漂移）
+- (b) 抽成 Rust core + UniFFI，Swift／Kotlin 共用（正路，但要裝 rustup + 多一層 FFI）
 
-`tools/fetch_data.sh` 下載 → `tools/build_lexicon.py` 編譯成 `Resources/jyutping.tsv`：
+建議：**v1 先 Swift，Android 開工前才決定抽唔抽 Rust**。理由係排序公式同詞庫格式本身已經
+可移植，屆時重寫只係幾百行；而家引入 Rust 只會拖慢 Mac 出貨。
+
+## 3. v1 Mac 現狀（已 commit）
+
+```
+keydown → CantoneseInputController → Engine.candidates()
+        → Decoder.nbest（音節格 Viterbi 整句）+ rank（詞級前綴補位）
+        → Lexicon（byKey + 二分前綴）+ Learning（個人加權）
+        → setMarkedText + CandidatePanel（自製 NSPanel）
+        → insertText
+```
+
+- IMK host：zero TCC 權限、真 inline marked text，macOS 上唯一正路。
+- 唔用 librime（要 glog / leveldb / yaml-cpp / OpenCC / boost + cmake），ranking 自控正好係個人化所在。
+- 唔用 `IMKCandidates`（macOS 26 Liquid Glass 會白字白底），自繪 `NSPanel`，
+  位置由 `attributes(forCharacterIndex:lineHeightRectangle:)` 攞插入點。
+
+## 4. 標點符號（待批准）
+
+原則：**中文模式直出全形**，Shift 出次選，`/` 開符號面板查。組字中嘅字母鍵唔受影響。
+
+| 按鍵 | 直出 | Shift |
+|---|---|---|
+| `,` | ， | 、 |
+| `.` | 。 | … |
+| `?` | ？ | ？ |
+| `!` | ！ | ！ |
+| `;` | ； | ： |
+| `:` | ： | ； |
+| `(` `)` | （ ） | ( ) 半形 |
+| `[` `]` | 「 」 | 『 』 |
+| `<` `>` | 《 》 | 〈 〉 |
+| `"` | 「 | 」 |
+| `-` | － | — |
+| `~` | ～ | · |
+| `$` | ＄ | ¥ |
+| `%` | ％ | ‰ |
+
+另加：
+
+- **粵語常用字捷徑**：`/` 之後打 `d` → 啲、`g` → 嘅、`z` → 咗…（v1.2 做符號面板時一併）。
+- **數字符號**：`1`–`9` 喺組字中係選字，唔組字時照常出數字（唔做全形數字）。
+- **英文模式（未做）**：全半形自動切。
+
+## 5. 速度設計（Squirrel 唔夠快嘅解法，按效益排序）
+
+1. **詞組動態組合**（最大效益）：打完成句粵拼，Viterbi 揀最順嘅字詞組合，一次上屏一句，
+   唔使逐個詞揀。呢個係 librime 真正贏嘅地方，亦係 v1 最大缺口。
+2. **簡拼**：`nd` → 你哋、`mg` → 唔該。規則：只取每個音節首字母，聲調可加喺尾。
+3. **單候選自動上屏**：只有一個候選就唔使撳 space。
+4. **中英混打**：唔使切模式，連續英文字母（唔似粵拼）直接上英文。
+5. **按 app 記憶**：唔同 app 用唔同候選（Terminal 英文多、WhatsApp 口語多）。
+
+## 6. 詞庫
+
+`tools/fetch_data.sh` → `tools/build_lexicon.py` → `Resources/jyutping.tsv`：
 
 ```
 toneless_key \t toned_key \t text \t score
 ngodei       \t ngo5dei6  \t 我哋  \t 660
 ```
 
-- 來源：rime-cantonese 嘅 `chars` / `words` / `phrase` / `lettered` / `maps` 五張表，跨表去重。
-- `score = 100 * log1p(freq)`，freq 來自 rime-essay；essay 冇收錄嘅詞用固定值
-  （二字 100、三字 30、其餘 10），令佢哋排喺常用單字之後，靠學習升上來。
-- `maps` 表（地名）分數 +3。
+- 來源：rime-cantonese `chars` / `words` / `phrase` / `lettered` / `maps`，跨表去重。
+- 現況：138,732 條、89,219 個 toneless key、4.6 MB。
+- `score = 100 × log1p(freq)`；freq 來自 rime-essay。essay 冇收錄嘅詞用固定值
+  （二字 100、三字 30、其餘 10），排喺常用單字之後，靠學習升上來。
 
-## 排序
+## 7. 排序（v1.1：整句 Viterbi）
+
+輸入冇聲調數字時行 beam search 嘅 Viterbi 解碼：
 
 ```swift
-score = entry.score
-      + learningBonus(code, text)     // min(count·e^(-days/60), 12) × 60
-      + 200 (key 完全等於輸入，即單音節)
-      + 200 (toned 完全等於輸入)
+// 音節表由 toned key 反推（831 個音節），喺輸入串上搵合法音節邊界，
+// 沿邊界累積 key 查 byKey（89k 個 key / 138k 條詞）
+wordScore = entry.score              // 100·ln(1+freq)，freq 來自 rime-essay
+          + learningBonus(code, text)
+          + 3000 × (音節數 − 1)       // wordBonus：對抗 unigram 偏好逐字切
+          + prior(text)               // 粵字 +600；書面語虛字 −200/個（最多 −400）
+pathScore = Σ wordScore
 ```
 
-- 輸入冇數字 → 用 toneless key 做前綴查詢（打 `ngo` 可以出 `ngodei`）。
-- 輸入有數字 → 同一批候選再過濾 `toned.hasPrefix(input)`，所以 `ngo4` 只出四聲。
-- 同一 text 只留最高分。
+- `learningBonus = min(count · e^(−days/60), 12) × 60`，存
+  `~/Library/Application Support/Cantainput/learning.json`。
+- 每個輸入位置只留最高分 40 條路徑（beam），最後排序、按 text 去重。
+- 去重後再過 `diversify`：**頭一個字唔同、其餘一樣**嘅候選（你號碼／呢號碼／您號碼…）
+  每個 tail 最多留 2 個，免得 18 個位都係同一句嘅同音變體。
+- 唔夠 18 個就用詞級前綴查詢（`rank`）補位，所以 short input 一定夠位。
+- 有聲調數字（`ngo4`）跳過 Viterbi，用前綴 + `toned.hasPrefix` 過濾。
+- 候選下面顯示嘅粵拼來自詞條本身（`Lexicon.splitToned`，保留聲調），
+  所以會見到 `nei5 hou2 maa1`。單字第一個讀音 build 時 +5 分（`好` → `hou2` 唔係
+  `hou3`），但 rime 個 `%` 欄唔可靠，間中仍會揀錯調（例：`嗎` 出 `maa1` 唔係 `maa3`）。
+- **取捨**：`wordBonus` 大 → 長詞贏（`多謝`／`早晨`／`今日天氣` 正確），
+  但成本相近時 unigram 仍然會揀錯（`ngosoengsikfaan` → `我上食飯` 先過 `我想食飯`，
+  正解排第 2）。真正解決要 bigram / 粵語詞頻，唔係調參數。
 
-## 已知限制
+## 8. 手機與語音
 
-- 冇簡拼（`nd` → 你哋）、冇模糊音、冇詞組動態組合（只出詞庫裡有嘅詞）。
-- 候選窗最多 9 個、單行；未做翻頁。
+### 8.1 關鍵限制：模型唔可以放喺鍵盤入面
+
+- **iOS 鍵盤 extension 記憶體上限約 30–60 MB**（Apple 冇公開，社群實測）。
+  一個 0.6B int4 模型都要 ~400 MB，塞唔入。所以 iOS 嘅語音一定要喺**主 app**，
+  鍵盤只負責打字。Apple 亦冇 API 叫系統手寫鍵盤，第三方鍵盤只可以 `advanceToNextInputMode()`。
+- **Android IME service 鬆好多**（100–200 MB 撐得住），但一樣有機型／散熱／耗電差異。
+- 兩個平台都要預 VAD 同「短句」策略，唔好期待手機跑長段即時轉錄。
+
+### 8.2 語音三條路
+
+| 方案 | 準確度 | 成本 | 離線 | 判斷 |
+|---|---|---|---|---|
+| 全本地小模型 | 中（粵語 WER 約 5–8%） | 免費 | ✅ | 日常短句、私隱 |
+| 全雲端（自己 key） | 高（4–5%） | $0.2–1 / 小時 | ❌ | 長段落、重要文字 |
+| **混合：預設本地，設定可切雲端** | 睇情況 | 免費為主 | ✅ / ❌ | **建議** |
+
+候選本地模型：
+
+- **Paraformer-trilingual (zh / yue / en)**，~200–250 MB，sherpa-onnx 有現成 ONNX，
+  一個模型處理粵英夾雜 → 手機首選。
+- **Qwen3-ASR-0.6B / 1.7B**：準確度最好（vendor 自報粵語 WER 4.80% / 4.12%），
+  但運算重，Mac 先好用；手機只考慮旗艦 + int4。
+- Whisper 系唔用：large-v3 粵語 WER 31%，差太遠。
+- 標點：sherpa-onnx CT-Transformer（幾十 ms 離線）或雲端自帶標點。
+
+### 8.3 同一套 backend protocol
+
+```
+Audio → VAD → ASRBackend ─┬─ LocalBackend(sherpa-onnx, model path)
+                           └─ CloudBackend(provider, api key)
+       → PostProcessor（標點 / ITN / 繁簡 / 語氣詞保留 / 書面語模式）
+```
+
+設定 schema 三平台共用（各自實作 storage）。「之後有條 key 就即刻切換」就係呢個介面。
+
+### 8.4 落地次序
+
+| 階段 | 內容 | 要唔要模型 |
+|---|---|---|
+| A | Android 鍵盤：粵拼 + 英文 + 手寫（ML Kit Digital Ink，`zh-Hani`，離線免費） | 唔要 |
+| B | Android 語音：主 app 內（或 IME 內視機型），Paraformer 離線，設定可切雲端 | 要 |
+| C | iOS 鍵盤 extension（只打字） | 唔要 |
+| D | iOS 語音：主 app / Shortcuts / 分享 | 要 |
+
+## 9. 已知限制（v1）
+
+- 冇簡拼、冇模糊音、冇 bigram（只有 unigram + 人手 prior），所以長句仍會揀錯詞。
+- 冇 edit-distance 容錯：打錯字母（`neig` 想打 `nei`）唔會估，只會冇候選。
+- 候選 18 個、2 行（1–9，Shift+1–9）；未做翻頁。
+- 打唔到嘅字未接聲音輸出（v2 嘅介面已預留）。
 - 未做 `IsSecureEventInputEnabled()` 直通（password field 會照樣被攔）。
 - 繁簡轉換未做（詞庫係繁體，附帶少量簡體字）。
 
-## 註冊陷阱（今晚實測）
+## 10. 註冊陷阱（實測）
 
-新 bundle ID 嘅 IME **要 logout/login 一次** TIS 才會見到：
+新 bundle ID 嘅 IME **要 logout / login 一次** TIS 才會見到：
 
-- `TISRegisterInputSource()` 回 `0`（noErr），`lsregister` 認得個 bundle，
-  `IMKServer` 都起咗（`com.apple.inputmethodkit.setxpcendpoint` 有連線），
-  但 `TISCreateInputSourceList(nil, true)` 就係唔列出我哋。
-- 用 Squirrel 改 bundle id 再註冊都一樣唔出現 → 唔係我們 bundle 嘅問題，
-  係 `imklaunchagent` 喺 login 時掃一次 Input Methods 資料夾。
-- 已經註冊過之後，換版本只需 `killall Cantainput` + 重開，唔使再 logout。
+- `TISRegisterInputSource()` 回 noErr、`lsregister` 認得 bundle、`IMKServer` 起到
+  （`com.apple.inputmethodkit.setxpcendpoint` 有連線），但 `TISCreateInputSourceList`
+  就係唔列出。用 Squirrel 改 bundle id 再試都一樣 → 係 `imklaunchagent` 喺 login 時掃一次。
+- 註冊過之後，換版本只需 `killall Cantainput`，唔使再 logout。
 
-## 授權 TODO（公開之前一定要處理）
+## 11. 授權
+
+使用者已定：非商用，版權唔設限。所以詞庫連分數一齊 commit，公開時標 attribution 就算。
 
 | 資料 | 授權 | 處理 |
 |---|---|---|
-| rime-cantonese 詞庫 | CC BY 4.0 | 可以用，要標 attribution |
-| rime-essay 頻率 | **LGPL-3.0** | 只做 build-time 下載，唔 commit、唔隨 app 派 |
-| maps 表（地名） | ODbL-1.0 | 要標 attribution，公開前考慮剔走 |
+| rime-cantonese 詞庫 | CC BY 4.0 | 用，標 attribution |
+| rime-essay 頻率 | LGPL-3.0 | 用嚟計分，標出處（分數已係聚合數字） |
+| maps 表（地名） | ODbL-1.0 | 用，標 attribution |
 
-公開派街前要換一個 clean 嘅頻率來源（例如自己由 CC 授權語料統計，或者 words.hk 嘅
-public-domain frequency dump），否則 LGPL 會牽連到成個 repo。
+若日後想轉做寬鬆授權嘅 repo，只需換一個頻率來源重新 build（`build_lexicon.py` 已將來源隔離）。
 
-## 路線圖
+## 12. 路線圖
 
-- **v1.1**：簡拼、翻頁、繁簡切換、候選窗 keyboard 導航打磨、`SecureEventInput` 直通
-- **v1.2**：詞組動態組合（bigram/trigram）、按 app 記憶（唔同 app 用唔同候選）
-- **v2**：Typeless 式粵語聽寫（本地 Qwen3-ASR / sherpa-onnx，CT-Transformer 標點），純文字 app
-- **v3**：iPhone 鍵盤 extension（粵拼＋英文＋ML Kit 手寫）
+- **v1.0**（已做完）：註冊、打得順
+- **v1.1**（已做完）：**Viterbi 整句解碼、18 個候選 2 行、粵拼標音、粵字 prior**
+- **v1.2**（下一步）：edit-distance 容錯（打錯字都估到）、bigram 詞頻
+- **v1.3**：簡拼、繁簡一鍵切換、`SecureEventInput` 直通、翻頁、符號面板
+- **v1.4**：按 app 記憶、拼音提示浮窗（睇返已經上屏嘅字點讀）
+- **v2.0**：Mac 語音聽寫（本地 sherpa-onnx + 可切雲端）
+- **v2.5**：Android 鍵盤（粵拼＋英文＋手寫）
+- **v3.0**：Android 語音、iOS 鍵盤＋主 app 語音

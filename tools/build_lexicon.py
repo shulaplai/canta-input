@@ -53,18 +53,16 @@ def main():
     word_freq, char_freq = load_essay(os.path.join(DATA, "essay.txt"))
     print("essay: words=%d chars=%d" % (len(word_freq), len(char_freq)), file=sys.stderr)
 
-    def score(text, has_pct):
+    def score(text):
         f = word_freq.get(text)
         if f is None and len(text) > 1:
             known = [char_freq[c] for c in text if c in char_freq]
             if len(known) == len(text):
                 f = min(known) * 0.5 ** (len(text) - 1)
-        s = 100.0 * math.log1p(f) if f else 0.0
-        if has_pct:
-            s += 3.0
-        return int(round(s))
+        return 100.0 * math.log1p(f) if f else 0.0
 
     seen = set()
+    first_seen = set()
     out_rows = []
     for table in TABLES:
         path = os.path.join(DATA, "jyut6ping3.%s.dict.yaml" % table)
@@ -80,7 +78,14 @@ def main():
             if k in seen:
                 continue
             seen.add(k)
-            out_rows.append((toneless, toned, text, score(text, bool(pct))))
+            # The first listed reading of a character is its usual one; nudge it
+            # ahead of the alternate readings that share the same frequency.
+            fk = text + "\u0000" + toneless
+            first = fk not in first_seen
+            if first:
+                first_seen.add(fk)
+            s = score(text) + (5.0 if first else 0.0)
+            out_rows.append((toneless, toned, text, int(round(s))))
 
     out_rows.sort(key=lambda r: (r[0], -r[3]))
     os.makedirs(os.path.dirname(OUT), exist_ok=True)

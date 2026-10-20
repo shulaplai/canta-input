@@ -22,6 +22,15 @@ public final class Lexicon {
     private var loaded = false
     public private(set) var entryCount = 0
 
+    /// Toneless key -> entries. Used by the sentence decoder.
+    public private(set) var byKey: [String: [LexEntry]] = [:]
+    /// Every distinct toneless syllable in the lexicon, derived from toned keys.
+    public private(set) var syllables: Set<String> = []
+    /// Longest syllable length in letters ("gwaang" is 6).
+    public private(set) var maxSyllableLength = 1
+    /// Most syllables in one lexicon entry.
+    public private(set) var maxSyllables = 1
+
     public func load(from url: URL) throws {
         guard !loaded else { return }
         let data = try Data(contentsOf: url)
@@ -43,7 +52,90 @@ public final class Lexicon {
         }
         entries = out
         entryCount = out.count
+        buildIndex()
         loaded = true
+    }
+
+    private func buildIndex() {
+        var index: [String: [LexEntry]] = [:]
+        index.reserveCapacity(100_000)
+        for e in entries { index[e.key, default: []].append(e) }
+        byKey = index
+
+        var syl: Set<String> = []
+        var longest = 1
+        var most = 1
+        for e in entries {
+            let parts = Lexicon.splitSyllables(e.toned)
+            most = max(most, parts.count)
+            for p in parts {
+                syl.insert(p)
+                longest = max(longest, p.count)
+            }
+        }
+        syllables = syl
+        maxSyllableLength = longest
+        maxSyllables = most
+    }
+
+    /// Characters that are essentially Cantonese-only. A word containing one is
+    /// far more likely to be what a jyutping typist meant, so it gets a boost
+    /// over Mandarin homophones.
+    public static let cantoneseChars: Set<Character> = Set("哋唔咗喺啲佢乜嘅嚟嗰咁嘢冇睇攞諗傾瞓掟嘞喇囉喎咩咪噉㗎嗌靚攰撳揸唞嚿喐㩒嘅")
+
+    public static func containsCantonese(_ text: String) -> Bool {
+        for ch in text where cantoneseChars.contains(ch) { return true }
+        return false
+    }
+
+    /// Written-Chinese function characters. A colloquial jyutping typist rarely
+    /// means these, so they are mildly demoted.
+    public static let writtenChineseChars: Set<Character> = Set("說與於如或並卻僅曾已將被麼這那之其乃")
+
+    public static func writtenChinesePenalty(_ text: String) -> Double {
+        var hits = 0
+        for ch in text where writtenChineseChars.contains(ch) {
+            hits += 1
+            if hits >= 2 { break }
+        }
+        return -200.0 * Double(hits)
+    }
+
+    /// Language prior shared by the decoder and the prefix ranker.
+    public static func prior(_ text: String) -> Double {
+        (containsCantonese(text) ? 600 : 0) + writtenChinesePenalty(text)
+    }
+
+    /// "nei5hou2" -> ["nei5", "hou2"]. Keeps the tone digits for display.
+    static func splitToned(_ toned: String) -> [String] {
+        var out: [String] = []
+        var current = ""
+        for ch in toned {
+            if ch.isLetter {
+                current.append(ch)
+            } else if ch.isNumber {
+                current.append(ch)
+                out.append(current)
+                current = ""
+            }
+        }
+        if !current.isEmpty { out.append(current) }
+        return out
+    }
+
+    /// "nei5hou2" -> ["nei", "hou"]; digits and letters are the only inputs.
+    static func splitSyllables(_ toned: String) -> [String] {
+        var out: [String] = []
+        var current = ""
+        for ch in toned {
+            if ch.isLetter {
+                current.append(ch)
+            } else if ch.isNumber {
+                if !current.isEmpty { out.append(current); current = "" }
+            }
+        }
+        if !current.isEmpty { out.append(current) }
+        return out
     }
 
     private func lowerBound(_ prefix: String) -> Int {
