@@ -23,7 +23,7 @@ jobs:
         run: tools/build.sh
 
       - name: Self-test
-        run: '"build/Cantainput.app/Contents/MacOS/Cantainput" --selftest'
+        run: '"build/app/Cantainput.app/Contents/MacOS/Cantainput" --selftest'
 
       - name: Package
         run: tools/package.sh
